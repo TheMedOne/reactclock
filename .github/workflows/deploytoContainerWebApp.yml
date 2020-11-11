@@ -1,0 +1,53 @@
+on: [push]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 'Checkout Github Action' 
+      uses: actions/checkout@master
+    
+    - name: 'Login via Azure CLI'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - uses: azure/docker-login@v1
+      with:
+        login-server: medone.azurecr.io
+        username: ${{ secrets.acr_medone_username }}
+        password: ${{ secrets.acr_medone_password }}
+    
+    - name: Build and push image to ACR
+      id: build-image
+      run: |
+        docker build "$GITHUB_WORKSPACE/react-clock-basic" -f  "react-clock-basic/Dockerfile" -t medone.azurecr.io/medone-img:${{ github.sha }}
+        docker push medone.azurecr.io/medone-img:${{ github.sha }}
+
+    - name: Set Web App ACR authentication
+      uses: Azure/appservice-settings@v1
+      with: 
+        app-name: medone
+        app-settings-json: | 
+          [
+            {
+              "name": "DOCKER_REGISTRY_SERVER_URL",
+              "value": "medone.azurecr.io",
+              "slotSetting": false
+            },
+            {
+              "name": "DOCKER_REGISTRY_SERVER_USERNAME",
+              "value": "${{ secrets.acr_medone_username }}",
+              "slotSetting": false
+            },
+            {
+              "name": "DOCKER_REGISTRY_SERVER_PASSWORD",
+              "value": "${{ secrets.acr_medone_password }}",
+              "slotSetting": false
+            }            
+          ]
+      
+    - uses: azure/webapps-deploy@v2
+      with:
+        app-name: medone
+        images: medone.azurecr.io/medone-img:${{ github.sha }}
